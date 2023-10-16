@@ -17,4 +17,4 @@ Disallow: /*.php
 Disallow: /*?replytocom
 Disallow: /*?turl
 
-Sitemap: http://www.mega-bulka.com/sitemap_index.xml
+Sitemap: http://superbulka.shop/sitemap_index.xml
