@@ -1,0 +1,1116 @@
+let GeoLocation = {};
+
+jQuery(function ($) {
+  "use strict";
+
+  let markers = [],
+    staticMarkers = [],
+    streets = [],
+    AllStreets = [],
+    map,
+    myLatlng,
+    marker,
+    image,
+    noDataBase,
+    streetFromAutoComplete,
+    checkAutocompleteSelect,
+    redZone,
+    redZone2,
+    redZone3,
+    greenZone,
+    yellowZone,
+    yellowZone2,
+    step1 = false,
+    step2 = false,
+    step3 = false,
+    locationsDataLink = $(".map-block").data("map-link"),
+    locationsData,
+    polygons;
+
+  let ibOptions = {
+      alignBottom: true,
+      content: "text",
+      pixelOffset: new google.maps.Size(
+        $(window).width() < 575 ? -150 : -163,
+        -40
+      ),
+      boxStyle: {
+        width: $(window).width() < 575 ? "300px" : "326px",
+      },
+      closeBoxMargin: "5px 5px 5px 5px",
+      closeBoxURL: $("#map").attr("data-ib-close-img"),
+    },
+    ib = new InfoBox(ibOptions);
+
+  // Create markers
+  function addMarker(location) {
+    image = {
+      url: $("#map").attr("data-map-marker"),
+      // scaledSize : new google.maps.Size(43, 57),
+    };
+    marker = new google.maps.Marker({
+      position: location,
+      icon: image,
+    });
+
+    markers.push(marker);
+    marker.setMap(map);
+    map.panTo(location);
+  }
+
+  function addStaticMarker(location, map, string, image, delivery) {
+    const staticMarker = new google.maps.Marker({
+      position: location,
+      map: map,
+      icon: image,
+      selfdelivery: delivery,
+    });
+    const content = '<div class="info-box">' + string + "</div>";
+    google.maps.event.addListener(staticMarker, "click", function () {
+      ib.setContent(content);
+      ib.setPosition(location);
+      ib.open(map);
+    });
+
+    staticMarkers.push(staticMarker);
+  }
+
+  function initLocationsMap() {
+    $.ajax({
+      url: locationsDataLink,
+      type: "get",
+      dataType: "json",
+      error: function (data) {
+        console.log("Error receiving external data file");
+      },
+      success: function (data) {
+        locationsData = data;
+        //console.log(data);
+        polygons = constructPoligons(locationsData);
+        initialize(polygons, locationsData);
+      },
+    });
+  }
+
+  function constructPoligons(locationsData) {
+    const redZones = locationsData.redZones;
+    const yellowZones = locationsData.yellowZones;
+    const greenZones = locationsData.greenZones;
+    const polygons = {};
+
+    if (redZones) {
+      polygons.redZonesPolygons = [];
+      redZones.zoneLocations.forEach(function (location) {
+        const polygon = new google.maps.Polygon({
+          paths: location.path,
+          strokeColor: redZones.strokeColor,
+          strokeOpacity: redZones.strokeOpacity,
+          strokeWeight: redZones.strokeWeight,
+          fillColor: redZones.fillColor,
+          fillOpacity: redZones.fillOpacity,
+        });
+        polygons.redZonesPolygons.push(polygon);
+      });
+    }
+
+    if (yellowZones) {
+      polygons.yellowZonesPolygons = [];
+      yellowZones.zoneLocations.forEach(function (location) {
+        const polygon = new google.maps.Polygon({
+          paths: location.path,
+          strokeColor: yellowZones.strokeColor,
+          strokeOpacity: yellowZones.strokeOpacity,
+          strokeWeight: yellowZones.strokeWeight,
+          fillColor: yellowZones.fillColor,
+          fillOpacity: yellowZones.fillOpacity,
+        });
+        polygons.yellowZonesPolygons.push(polygon);
+      });
+    }
+
+    if (greenZones) {
+      polygons.greenZonesPolygons = [];
+      greenZones.zoneLocations.forEach(function (location) {
+        const polygon = new google.maps.Polygon({
+          paths: location.path,
+          strokeColor: greenZones.strokeColor,
+          strokeOpacity: greenZones.strokeOpacity,
+          strokeWeight: greenZones.strokeWeight,
+          fillColor: greenZones.fillColor,
+          fillOpacity: greenZones.fillOpacity,
+        });
+        polygons.greenZonesPolygons.push(polygon);
+      });
+    }
+
+    //console.log('polygons: ', polygons);
+    return polygons;
+  }
+
+  // initLocationsMap();
+
+  // initialize map
+  function initialize(polygons, locationsData) {
+    const $mapEL = $("#map");
+    let lat = $mapEL.attr("data-lat"),
+      lng = $mapEL.attr("data-lng"),
+      isAddressMap = $mapEL.hasClass("address-map");
+
+    myLatlng = new google.maps.LatLng(lat, lng);
+
+    let setZoom = parseInt($mapEL.attr("data-zoom"));
+
+    let styles = [
+      {
+        elementType: "geometry",
+        stylers: [
+          {
+            color: "#212121",
+          },
+        ],
+      },
+      {
+        elementType: "geometry.fill",
+        stylers: [
+          {
+            color: "#333333",
+          },
+        ],
+      },
+      {
+        elementType: "labels.icon",
+        stylers: [
+          {
+            visibility: "off",
+          },
+        ],
+      },
+      {
+        elementType: "labels.text.fill",
+        stylers: [
+          {
+            color: "#757575",
+          },
+        ],
+      },
+      {
+        elementType: "labels.text.stroke",
+        stylers: [
+          {
+            color: "#212121",
+          },
+        ],
+      },
+      {
+        featureType: "administrative",
+        elementType: "geometry",
+        stylers: [
+          {
+            color: "#757575",
+          },
+        ],
+      },
+      {
+        featureType: "administrative.country",
+        elementType: "labels.text.fill",
+        stylers: [
+          {
+            color: "#9e9e9e",
+          },
+        ],
+      },
+      {
+        featureType: "administrative.land_parcel",
+        stylers: [
+          {
+            visibility: "off",
+          },
+        ],
+      },
+      {
+        featureType: "administrative.locality",
+        elementType: "labels.text.fill",
+        stylers: [
+          {
+            color: "#bdbdbd",
+          },
+        ],
+      },
+      {
+        featureType: "poi",
+        elementType: "labels.text.fill",
+        stylers: [
+          {
+            color: "#757575",
+          },
+        ],
+      },
+      {
+        featureType: "poi.park",
+        elementType: "geometry",
+        stylers: [
+          {
+            color: "#181818",
+          },
+        ],
+      },
+      {
+        featureType: "poi.park",
+        elementType: "labels.text.fill",
+        stylers: [
+          {
+            color: "#616161",
+          },
+        ],
+      },
+      {
+        featureType: "poi.park",
+        elementType: "labels.text.stroke",
+        stylers: [
+          {
+            color: "#1b1b1b",
+          },
+        ],
+      },
+      {
+        featureType: "road",
+        stylers: [
+          {
+            color: "#2a2a2a",
+          },
+        ],
+      },
+      {
+        featureType: "road",
+        elementType: "geometry.fill",
+        stylers: [
+          {
+            color: "#2c2c2c",
+          },
+        ],
+      },
+      {
+        featureType: "road",
+        elementType: "labels.text.fill",
+        stylers: [
+          {
+            color: "#8a8a8a",
+          },
+        ],
+      },
+      {
+        featureType: "road.arterial",
+        elementType: "geometry",
+        stylers: [
+          {
+            color: "#373737",
+          },
+        ],
+      },
+      {
+        featureType: "road.highway",
+        elementType: "geometry",
+        stylers: [
+          {
+            color: "#3c3c3c",
+          },
+        ],
+      },
+      {
+        featureType: "road.highway.controlled_access",
+        elementType: "geometry",
+        stylers: [
+          {
+            color: "#4e4e4e",
+          },
+        ],
+      },
+      {
+        featureType: "road.local",
+        elementType: "labels.text.fill",
+        stylers: [
+          {
+            color: "#616161",
+          },
+        ],
+      },
+      {
+        featureType: "transit",
+        elementType: "labels.text.fill",
+        stylers: [
+          {
+            color: "#757575",
+          },
+        ],
+      },
+      {
+        featureType: "water",
+        elementType: "geometry",
+        stylers: [
+          {
+            color: "#000000",
+          },
+        ],
+      },
+      {
+        featureType: "water",
+        elementType: "labels.text.fill",
+        stylers: [
+          {
+            color: "#3d3d3d",
+          },
+        ],
+      },
+    ];
+
+    let styledMap = new google.maps.StyledMapType(styles, {
+      name: "Styled Map",
+    });
+
+    let mapOptions = {
+      zoom: setZoom,
+      center: myLatlng,
+      mapTypeControlOptions: {
+        mapTypeIds: [google.maps.MapTypeId.ROADMAP, "map_style"],
+      },
+      fullscreenControl: false,
+      mapTypeControl: false,
+      streetViewControl: false,
+      zoomControl: true,
+    };
+
+    // google Autocomplete options
+    let southWestLatLng = new google.maps.LatLng({
+        lat: 49.7656834,
+        lng: 23.8685913,
+      }),
+      northEastLatLng = new google.maps.LatLng({
+        lat: 49.906071,
+        lng: 24.166724,
+      }),
+      lvivAutocompleteBounds = new google.maps.LatLngBounds(
+        southWestLatLng,
+        northEastLatLng
+      );
+
+    let options = {
+      types: ["address"],
+      componentRestrictions: { country: "ua" },
+      bounds: lvivAutocompleteBounds,
+      strictBounds: true,
+    };
+
+    if ($("#streetAutocomplete").length) {
+      let autocomplete = new google.maps.places.Autocomplete(
+        document.getElementById("streetAutocomplete"),
+        options
+      );
+
+      google.maps.event.addListener(autocomplete, "place_changed", function () {
+        $("#houseNumber").val("");
+        for (let i = 0; i < markers.length; i++) {
+          // Remove old marker
+          markers[i].setMap(null);
+        }
+      });
+    }
+
+    // delivery page autocomlete
+    if ($("#deliveryStreet").length) {
+      let deliveryStreet = new google.maps.places.Autocomplete(
+        document.getElementById("deliveryStreet"),
+        options
+      );
+
+      google.maps.event.addListener(
+        deliveryStreet,
+        "place_changed",
+        function () {
+          let place = deliveryStreet.getPlace(),
+            newLocation;
+
+          if (!place.geometry.location) return false;
+
+          if (markers.length) {
+            for (let i = 0; i < markers.length; i++) {
+              markers[i].setMap(null);
+            }
+            map.panTo(myLatlng);
+          }
+
+          newLocation = new google.maps.LatLng(
+            place.geometry.location.lat(),
+            place.geometry.location.lng()
+          );
+          smoothZoomMap(map, 15);
+          addMarker(newLocation);
+        }
+      );
+    }
+
+    //Create map
+    map = new google.maps.Map(document.getElementById("map"), mapOptions);
+    map.mapTypes.set("map_style", styledMap);
+    map.setMapTypeId("map_style");
+
+    //Set map polygons, set polygons without contact page
+    let contactPageMap = $(".contact-page").length;
+    if (!contactPageMap) {
+      for (let key in polygons) {
+        polygons[key].forEach(function (polygon) {
+          polygon.setMap(map);
+        });
+      }
+    }
+
+    if (!contactPageMap) {
+      $(".marker").each(function (i, el) {
+        addStaticMarker(
+          new google.maps.LatLng(
+            $(this).attr("data-lat"),
+            $(this).attr("data-lng")
+          ),
+          map,
+          $(this).attr("data-string"),
+          $(this).attr("data-image"),
+          $(this).attr("data-delivery")
+        );
+      });
+    } else {
+      $(".marker").each(function (i, el) {
+        if ($(window).width() < 768) {
+          addStaticMarker(
+            new google.maps.LatLng(
+              $(this).attr("data-lat"),
+              $(this).attr("data-lng")
+            ),
+            map,
+            $(this).attr("data-string"),
+            $(this).attr("data-image-mobile"),
+            $(this).attr("data-delivery")
+          );
+        } else {
+          addStaticMarker(
+            new google.maps.LatLng(
+              $(this).attr("data-lat"),
+              $(this).attr("data-lng")
+            ),
+            map,
+            $(this).attr("data-string"),
+            $(this).attr("data-image"),
+            $(this).attr("data-delivery")
+          );
+        }
+      });
+    }
+
+    //close info box
+    map.addListener("click", function () {
+      ib.close();
+    });
+
+    //Change city
+    $('select[name="select_city"]').on("change", function () {
+      streets = []; // remove old steets
+      var newCity = $(this).val();
+      if (newCity == "") {
+        newCity = "Львів";
+      }
+
+      $("#streetAutocomplete").val("");
+      $("#houseNumber").val("");
+    });
+
+    // clear address fields and marker inside cabinet address form
+    $(document).on("click", ".js-clear-address-fields", function () {
+      $('input[name="type_address"]').val("");
+      $('input[name="street"]').val("");
+      $('input[name="number-building"]').val("");
+      $('input[name="number-apartment"]').val("");
+
+      for (let i = 0; i < markers.length; i++) {
+        // Remove old marker
+        markers[i].setMap(null);
+      }
+    });
+
+    //clear inputs
+    var selectCityCheck = false;
+    $("#streetAutocomplete").focus(function () {
+      selectCityCheck = false;
+      $("#streetAutocomplete").val("");
+      $("#houseNumber").val("");
+    });
+
+    $("#streetAutocomplete").blur(function () {
+      if (selectCityCheck === false) {
+        $("#houseNumber").val("");
+      }
+    });
+
+    //get coordinates
+    /*    map.addListener('rightclick', function(e){
+      let lat = e.latLng.lat();
+      let lng = e.latLng.lng();
+      console.log(e.latLng.lat(), e.latLng.lng());
+    });*/
+  }
+
+  //Step 3
+  function checkDeliveryZone(
+    newLocation,
+    currentPrice,
+    redZonePrice,
+    yellowZonePrice,
+    greenZonePrice
+  ) {
+    if (polygons.redZonesPolygons) {
+      const some = polygons.redZonesPolygons.some(function (polygon) {
+        if (
+          google.maps.geometry.poly.containsLocation(newLocation, polygon) ===
+          true
+        ) {
+          $("#map").attr("data-current-zone", $("#map").data("red-zone"));
+          $("#map").attr("data-current-zone-type", "red");
+          $("#map").attr("data-current-nomin-delivery-price", 0);
+          $(".deliveryWarning .errorMsg.lowOrder b").html(
+            $("#map").data("red-zone-nomin-delivery-price")
+          );
+          $(
+            ".deliveryWarning .errorMsg.lowOrderDelivery b, .cost-lines-informer .min-delivery b, .cost-lines .total-line .total-cost"
+          ).html($("#map").data("red-zone"));
+
+          if ($(".all-product-price").length && currentPrice >= redZonePrice) {
+            step3 = true;
+            step3Func(step3);
+          } else {
+            $("#map").attr(
+              "data-current-nomin-delivery-price",
+              $("#map").data("red-zone-nomin-delivery-price")
+            );
+            console.log("redPriceLow");
+            step3 = false;
+            step3Func(step3);
+
+            //all summ
+            $(".all-product-price .all-product-price-el").html(
+              currentPrice + +$("#map").data("red-zone-nomin-delivery-price")
+            );
+          }
+          return true;
+        }
+      });
+
+      if (some) {
+        console.log("IN RED ZONE");
+        return false;
+      }
+    }
+
+    if (polygons.yellowZonesPolygons) {
+      const some = polygons.redZonesPolygons.some(function (polygon) {
+        if (
+          google.maps.geometry.poly.containsLocation(newLocation, polygon) ===
+          true
+        ) {
+          $("#map").attr("data-current-zone", $("#map").data("yellow-zone"));
+          $("#map").attr("data-current-zone-type", "yellow");
+          $("#map").attr("data-current-nomin-delivery-price", 0);
+          $(".deliveryWarning .errorMsg.lowOrder b").html(
+            $("#map").data("yellow-zone-nomin-delivery-price")
+          );
+          $(
+            ".deliveryWarning .errorMsg.lowOrderDelivery b, .cost-lines-informer .min-delivery b, .cost-lines .total-line .total-cost"
+          ).html($("#map").data("yellow-zone"));
+          if (
+            $(".all-product-price").length &&
+            currentPrice >= yellowZonePrice
+          ) {
+            step3 = true;
+            step3Func(step3);
+          } else {
+            $("#map").attr(
+              "data-current-nomin-delivery-price",
+              $("#map").data("yellow-zone-nomin-delivery-price")
+            );
+            console.log("yellowPriceLow");
+            step3 = false;
+            step3Func(step3);
+
+            //all summ
+            $(".all-product-price .all-product-price-el").html(
+              currentPrice + +$("#map").data("yellow-zone-nomin-delivery-price")
+            );
+          }
+          return true;
+        }
+      });
+
+      if (some) {
+        console.log("IN YELLOW ZONE");
+        return false;
+      }
+    }
+
+    if (polygons.greenZonesPolygons) {
+      const some = polygons.greenZonesPolygons.some(function (polygon) {
+        if (
+          google.maps.geometry.poly.containsLocation(newLocation, polygon) ===
+          true
+        ) {
+          $("#map").attr("data-current-zone", $("#map").data("green-zone"));
+          $("#map").attr("data-current-zone-type", "green");
+          $('#map').attr('data-current-nomin-delivery-price', $('#map').data('green-zone-nomin-delivery-price'));
+          $('#map').attr('data-current-delivery-price', $('#map').data('green-zone-delivery-price'));
+          $(".deliveryWarning .errorMsg.lowOrder b").html($("#map").data("green-zone") );
+          $(".deliveryWarning .errorMsg.lowOrderDelivery b, .cost-lines-informer .min-delivery b, .cost-lines .total-line .total-cost"
+          ).html($("#map").data("green-zone-nomin-delivery-price"));
+          if (
+            $(".all-product-price").length &&
+            currentPrice >= greenZonePrice
+          ) {
+            step3 = true;
+            step3Func(step3);
+          } else {
+            $("#map").attr(
+              "data-current-nomin-delivery-price",
+              $("#map").data("green-zone-nomin-delivery-price")
+            );
+
+            step3 = false;
+            step3Func(step3);
+
+            //all summ
+            $(".all-product-price .all-product-price-el").html(
+              currentPrice + +$("#map").data("green-zone-nomin-delivery-price")
+            );
+          }
+          return true;
+        }
+      });
+
+      if (some) {
+        // console.log("IN GREEN ZONE");
+        return false;
+      }
+    }
+
+    // No delivery area
+    // console.log("OUTSIDE of ZONE");
+    $("#map").attr("data-current-nomin-delivery-price", 0);
+    $("#map").attr("data-current-zone-type", "outside");
+    step2 = false;
+    step3 = false;
+
+    $(".deliveryWarning .errorMsg.noDelivery b, #not-delivery b, #all-products-delivery"
+    ).html($("#map").data("outside-zone-nomin-delivery-price"));
+
+    $(".order-button, .main-order-button").addClass("disabled");
+    // $(".deliveryWarning .errorMsg.empty-address").slideUp(350);
+    // $(".deliveryWarning .errorMsg.empty-house").slideUp(350);
+    // $(".deliveryWarning .errorMsg.lowOrder").slideUp(350);
+    // $(".deliveryWarning .errorMsg.lowOrderDelivery").slideUp(350);
+    $(".deliveryWarning .errorMsg.noDelivery").slideDown(350);
+
+    // $(".checkout-map #not-delivery").slideDown(350);
+    // $(".checkout-map #self-delivery").slideUp(350);
+    // $(".price-wrapp .price-delivery").slideDown(350);
+    // $(".deliveryWarning .errorMsg.outsideOfZones").slideDown(350);
+    // $(".save-address").addClass("disabled");
+  }
+
+  //Step 2
+  function address(latlng) {
+    let newLocation = latlng,
+      currentPrice = +$('.all-product-price-el').attr('data-total'),
+      redZonePrice = +$("#map").data("red-zone"),
+      yellowZonePrice = +$("#map").data("yellow-zone"),
+      greenZonePrice = +$("#map").data("green-zone-nomin-delivery-price");
+
+    //console.log(currentPrice)
+    // Start step 3
+    if (step1 && step2) {
+      for (let i = 0; i < markers.length; i++) {
+        // Remove old marker
+        markers[i].setMap(null);
+      }
+      smoothZoomMap(map, 15);
+      addMarker(newLocation);
+      checkDeliveryZone(
+        newLocation,
+        currentPrice,
+        redZonePrice,
+        yellowZonePrice,
+        greenZonePrice
+      );
+    }
+  }
+
+  //Step 1
+  GeoLocation.googleMapCoordinates = function () {
+    if ($("#selfDelivery").is(":checked")) {
+      return;
+    }
+
+    var select_city = "Львів";
+    // var select_city = $('select[name="select_city"]').val();
+    // if (select_city == "") {
+    //   select_city = "Львів";
+    // }
+    var street = '';
+    var street_full = $("#streetAutocomplete").val();
+    console.log(street_full);
+    street_full = street_full.replace('Lviv, Lviv Oblast, Ukraine', '');
+    street_full = street_full.replace('Львів, Львівська область, Україна', '');
+    var street = street_full.replace('вул.', '');
+    let streetAddress =
+      select_city +
+      " " +
+      street +
+      " вулиця " +
+      $("#houseNumber").val();
+    console.log('streetAddress ', select_city+' '+street);
+
+    let geocoder = new google.maps.Geocoder();
+
+    geocoder.geocode(
+      {
+        address: streetAddress,
+      },
+      function (results, status) {
+        if (status == google.maps.GeocoderStatus.OK) {
+          let latlng = new google.maps.LatLng(
+            results[0].geometry.location.lat(),
+            results[0].geometry.location.lng()
+          );
+          $(".deliveryWarning .errorMsg.noData").slideUp(350);
+          $("#pay2 input").closest(".radiobox-item").find("span").css({
+            opacity: "1",
+          });
+          $("#pay2 input").attr("disabled", false);
+
+          step2 = true;
+          step2Func(step2);
+
+          address(latlng); // start next step
+        } else {
+          step2 = false;
+          step2Func(step2);
+        }
+      }
+    );
+  };
+
+  //Step 1 function
+  function step1Func(stepBoolean) {
+    if (stepBoolean) {
+      $("#streetAutocomplete, #houseNumber").removeClass("invalid");
+      $(".deliveryWarning .errorMsg.empty-address").slideUp(350);
+    } else {
+      $("#streetAutocomplete, #houseNumber").addClass("invalid");
+      $(".deliveryWarning .errorMsg.empty-house").slideUp(350);
+      $(".deliveryWarning .errorMsg.lowOrder").slideUp(350);
+      $(".deliveryWarning .errorMsg.lowOrderDelivery").slideUp(350);
+      $(".deliveryWarning .errorMsg.noDelivery").slideUp(350);
+      $(".deliveryWarning .errorMsg.empty-address").slideDown(350);
+      $(".checkout-map #not-delivery").slideUp(350);
+      $(".price-wrapp .price-delivery").slideUp(350);
+      $(".checkout-map #self-delivery").slideUp(350);
+      resetMap();
+    }
+  }
+
+  //Step 2 function
+  function step2Func(stepBoolean) {
+    if (stepBoolean) {
+      $("#mapStreet").removeClass("invalid");
+      $(".deliveryWarning .errorMsg.empty-house").slideUp(350);
+      $(".main-order-button").removeClass("disabled");
+      $(".save-address").removeClass("disabled");
+      $(".deliveryWarning .errorMsg.outsideOfZones").slideUp(350);
+      $(".checkout-map #self-delivery").slideUp(350);
+      smoothZoomMap(map, 14);
+    } else {
+      $("#mapStreet").addClass("invalid");
+      $(".deliveryWarning .errorMsg.empty-address").slideUp(350);
+      $(".deliveryWarning .errorMsg.lowOrder").slideUp(350);
+      $(".deliveryWarning .errorMsg.lowOrderDelivery").slideUp(350);
+      $(".deliveryWarning .errorMsg.noDelivery").slideUp(350);
+      $(".deliveryWarning .errorMsg.empty-house").slideDown(350);
+      $(".main-order-button").addClass("disabled");
+      $(".checkout-map #not-delivery").slideUp(350);
+      $(".price-wrapp .price-delivery").slideUp(350);
+      $(".checkout-map #self-delivery").slideUp(350);
+      $(".save-address").addClass("disabled");
+    }
+  }
+
+  //Step 3 function
+ function step3Func(stepBoolean) {
+    var delivery_method = $('input[name="delivery_method"]:checked').val(); 
+    if(delivery_method == 'courier'){
+      if (stepBoolean) {  
+        console.log('1');
+        $("#mapStreet").removeClass("invalid");
+        $(".main-order-button").removeClass("disabled");
+        $(".deliveryWarning .errorMsg.empty-address").slideUp(350);
+        $(".deliveryWarning .errorMsg.empty-house").slideUp(350);
+        $(".deliveryWarning .errorMsg.noDelivery").slideUp(350);
+        $(".deliveryWarning .errorMsg.lowOrder").slideUp(350);
+        $(".deliveryWarning .errorMsg.lowOrderDelivery").slideUp(350);
+        $(".checkout-map #not-delivery").slideUp(350);
+        $(".price-wrapp .price-delivery").slideUp(150);
+        $(".checkout-map #self-delivery").slideUp(350);
+        $('#all-products-delivery').text('0');
+        $(".save-address").addClass("disabled");
+        smoothZoomMap(map, 15);
+      } else {
+        console.log('2');
+        $("#all-products-delivery").text($("#map").attr("data-current-delivery-price"));
+        if (+$('#map').attr('data-current-nomin-delivery-price') < +$('.all-product-price-subtotal').text()) {
+          console.log('stet3_false1');
+          $("#mapStreet").removeClass("invalid");
+          $(".main-order-button").removeClass("disabled");
+          $(".deliveryWarning .errorMsg.empty-address").slideUp(350);
+          $(".deliveryWarning .errorMsg.empty-house").slideUp(350);
+          $(".deliveryWarning .errorMsg.noDelivery").slideUp(350);
+          $(".checkout-map #not-delivery").slideUp(350);
+          $(".deliveryWarning .errorMsg.lowOrder").slideUp(350);
+          $(".deliveryWarning .errorMsg.lowOrderDelivery").slideUp(350);
+          $(".price-wrapp .price-delivery").slideDown(150);
+          $('#all-products-delivery').text('0');
+          $(".price-wrapp .price-delivery").slideUp(150);
+        } else if (+$('#map').attr('data-current-zone') > +$('.all-product-price-subtotal').text()) { 
+          console.log('stet3_false2');
+          $("#mapStreet").addClass("invalid");
+          $(".main-order-button").addClass("disabled");
+          $(".deliveryWarning .errorMsg.empty-address").slideUp(350);
+          $(".deliveryWarning .errorMsg.empty-house").slideUp(350);
+          // $(".deliveryWarning .errorMsg.noDelivery").slideDown(350);
+          $(".deliveryWarning .errorMsg.lowOrderDelivery").slideDown(350);
+          $(".deliveryWarning .errorMsg.lowOrder").slideDown(350);
+          $(".checkout-map #not-delivery").slideUp(350);
+          $(".price-wrapp .price-delivery").slideDown(150);
+          $(".save-address").removeClass("disabled");
+        } else if(+$('#map').attr('data-current-zone') < +$('.all-product-price-subtotal').text() && +$('#map').attr('data-current-nomin-delivery-price') > +$('.all-product-price-subtotal').text()) {
+          $('.main-order-button').removeClass('disabled');
+          $('.deliveryWarning .errorMsg.lowOrder').slideUp(350);
+          $('.deliveryWarning .errorMsg.lowOrderDelivery').slideDown(350);
+          $(".price-wrapp .price-delivery").css('display', 'block');
+          
+
+          let totalSpan = $('.all-product-price-el'),
+              total = parseFloat($('.all-product-price-subtotal').text()),    
+              delivery = parseFloat($('#all-products-delivery:visible').text()),
+              deliveryDiscountPercent = parseFloat($('input[name=delivery_method]:checked').attr('data-discount-percent')),
+              discount = parseFloat($('#all-products-discount').text()),
+              newTotal = total + (delivery ? delivery : 0) - (discount ? discount:0);
+              totalSpan.text(newTotal);
+        }
+      }
+      // smoothZoomMap(map, 11);
+    }
+    // console.log('mapp!!!!!');
+  }
+
+
+  //Reset markers and map zoom
+  function resetMap() {
+    if (markers.length) {
+      for (let i = 0; i < markers.length; i++) {
+        markers[i].setMap(null);
+      }
+      map.panTo(myLatlng);
+      smoothZoomMap(map, 10);
+    }
+  }
+
+  //Smooth map zoom
+  function smoothZoomMap(map, targetZoom) {
+    let currentZoom = arguments[2] || map.getZoom();
+    if (currentZoom != targetZoom) {
+      google.maps.event.addListenerOnce(map, "zoom_changed", function (event) {
+        smoothZoomMap(
+          map,
+          targetZoom,
+          currentZoom + (targetZoom > currentZoom ? 1 : -1)
+        );
+      });
+      setTimeout(function () {
+        map.setZoom(currentZoom);
+      }, 100);
+    }
+  }
+
+  //Start steps
+  _functions.startSteps = function () {
+    if ($("#streetAutocomplete").val() && $("#houseNumber").val()) {
+      if ($("#streetAutocomplete").val()) {
+        $("#streetAutocomplete").removeClass("invalid");
+      }
+      if ($("#houseNumber").val()) {
+        $("#houseNumber").removeClass("invalid");
+      }
+      step1 = true;
+      GeoLocation.googleMapCoordinates(); // step 1
+    } else {
+      step1 = false;
+    }
+  };
+
+  function debounce(func, wait, immediate) {
+    var timeout;
+    return function () {
+      var context = this,
+        args = arguments;
+      var later = function () {
+        timeout = null;
+        if (!immediate) func.apply(context, args);
+      };
+      var callNow = immediate && !timeout;
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+      if (callNow) func.apply(context, args);
+    };
+  }
+
+  //START steps
+  $("#streetAutocomplete").change(function () {
+    _functions.startSteps();
+  });
+
+  $("#houseNumber").keyup(
+    debounce(function () {
+      if ($("#streetAutocomplete").val().trim() !== "") {
+        _functions.startSteps();
+      }
+    }, 200)
+  );
+
+  $("#houseNumber").on("blur", function () {
+    if ($(this).val().trim() === "") {
+      $(".main-order-button").addClass("disabled");
+    }
+  });
+
+  $("#streetAutocomplete, #houseNumber").focus(function (e) {
+    if (e.which != 13 && $("#houseNumber").length) return false;
+    _functions.startSteps();
+  });
+
+  //Mobile button search
+  $("#StartSearch").on("click", function () {
+    if ($("#streetAutocomplete").val() && $("#houseNumber").val()) {
+      if ($("#streetAutocomplete").val()) {
+        $("#streetAutocomplete").removeClass("invalid");
+      }
+      if ($("#houseNumber").val()) {
+        $("#houseNumber").removeClass("invalid");
+      }
+      step1 = true;
+      step1Func(step1);
+      GeoLocation.googleMapCoordinates(); // step 1
+    } else {
+      step1 = false;
+      step1Func(step1);
+    }
+  });
+
+  //change price after click button
+  $(".checkout-products .thumb-input-number button").on("click", function () {
+    if ($("#streetAutocomplete").val() && $("#houseNumber").val()) {
+      _functions.startSteps();
+    }
+  });
+
+  //change price after remove product
+  $(".checkout-products .btn-close").on("click", function () {
+    if ($("#streetAutocomplete").val() && $("#houseNumber").val()) {
+      _functions.startSteps();
+    }
+  });
+
+  //selfDelivery
+  $("#selfDelivery").on("click", function (e) {
+    $(".main-order-button").removeClass("disabled");
+    $(".deliveryWarning .errorMsg.noDelivery").slideUp(350);
+    $(".checkout-map #not-delivery").slideUp(350);
+    $(".price-wrapp .price-delivery").slideUp(350);
+    $(".deliveryWarning .errorMsg.lowOrderDelivery").slideUp(350);
+    $(".deliveryWarning .errorMsg.lowOrder").slideUp(350);
+    $(".price-wrapp .price-discount").slideDown();
+
+    $("#streetAutocomplete").val("");
+    $("#houseNumber").val("");
+
+    resetMap();
+  });
+
+  //change location
+  $("#location_delivery").on("change", function () {
+    let newDelivery = $(this).val();
+    for (let i = 0; i < staticMarkers.length; i++) {
+      if (staticMarkers[i].selfdelivery == newDelivery) {
+        map.setZoom(14);
+        map.setCenter(staticMarkers[i].getPosition());
+      }
+    }
+    $(".checkout-map #self-delivery").find("span").text(newDelivery);
+    $(".checkout-map #self-delivery").slideDown(350);
+  });
+
+  //driveDelivery
+  $("#driveDelivery").on("click", function () {
+    if ($("#streetAutocomplete").val() && $("#houseNumber").val()) {
+      _functions.startSteps();
+    }
+    $(".price-wrapp .price-discount").slideUp();
+    $(".checkout-map #self-delivery").slideUp(350);
+    $(".main-order-button").addClass("disabled");
+
+    resetMap();
+
+    //reload sumoselect
+    $("#select_time")[0].sumo.unload();
+    $("#select_time").find("option:first-child").prop("disabled", true);
+    $("#select_time").find("option:first-child").prop("selected", true);
+    $("#select_time").find(".options opt:first-child").prop("disabled", true);
+    $("#select_time").SumoSelect({
+      floatWidth: 0,
+      nativeOnDevice: [],
+    });
+  });
+
+  //cabinet edit address
+  $(document).on("click", ".js-edit-address", function (e) {
+    let $this = $(this),
+      $adressItem = $this.closest(".js-address-item"),
+      name_address = $adressItem.find(".js-address-name").text(),
+      street = $adressItem.find(".js-street").text(),
+      number_building = $adressItem.find(".js-house").text(),
+      number_apartment = $adressItem.find(".js-apartment").text(),
+      index_edit = $adressItem.index();
+
+    $('input[name="type_address"]').val(name_address);
+    $('input[name="street"]').val(street);
+    $('input[name="number-building"]').val(number_building);
+    $('input[name="number-apartment"]').val(number_apartment);
+
+    $("#houseNumber").trigger("change");
+  });
+
+  //Load map
+  if ($("#map").length) {
+    setTimeout(function () {
+      initLocationsMap();
+      if ($("#houseNumber").length && $("#streetAutocomplete").length) {
+        if (
+          $("#houseNumber").val().trim() !== "" &&
+          $("#streetAutocomplete").val().trim() !== ""
+        ) {
+          $("#houseNumber").trigger("keyup");
+        }
+      }
+    }, 500);
+  }
+});
