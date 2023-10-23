@@ -1,6 +1,6 @@
 jQuery(function($) {
     "use strict";
-    var ajaxurl = '/wp-admin/admin-ajax.php';
+    var ajaxurl = 'https://www.mega-bulka.com/wp-admin/admin-ajax.php';
 
 
     document.addEventListener( 'wpcf7mailsent', function( event ) {
